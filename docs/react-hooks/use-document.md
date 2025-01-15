@@ -4,55 +4,125 @@ sidebar_position: 2
 
 # useDocument
 
-You can also subscribe directly to ledger updates, and automatically redraw when necessary. When sync is enabled you'll have both parties updating the same ledger in real-time. Here's an example of a simple shared text area (in real life you'd probably want to use an operational transform library like [Yjs](https://github.com/yjs/yjs) or [Automerge](https://automerge.org) for shared text areas, which both work great with Fireproof).
+The `useDocument` hook allows you to subscribe to and modify documents in your Fireproof database. When sync is enabled, multiple users can update the same document in real-time. For complex collaborative editing scenarios, consider using operational transform libraries like [Yjs](https://github.com/yjs/yjs) or [Automerge](https://automerge.org), which work seamlessly with Fireproof.
 
-Acquire `useDocument` as the return value of `useFireproof`. Here's an example. This example creates a new document with a `_id` based on the `customerId` prop, and initializes the document with a `name`, `company`, and `startedAt` timestamp.
+## Basic Usage
+
+Acquire `useDocument` from the `useFireproof` hook. Here's a simple example:
 
 ```js
 import { useFireproof } from 'use-fireproof';
 
-const CustomerProfile = ({ customerId }) => {
-  const { useDocument } = useFireproof("my-todo-app")
-  const [doc, setDoc, saveDoc] = useDocument(() => ({
-    _id: `${customerId}-profile`,
-    name: "",
-    company: "",
-    startedAt: Date.now()
-  }));
-  return (
-    <div>
-      <form>
-        Name:
-        <input
-          type="text"
-          value={doc.name}
-          onChange={(e) => setDoc({ name: e.target.value })}
-        />
-        Company:
-        <input
-          type="text"
-          value={doc.company}
-          onChange={(e) => setDoc({ company: e.target.value })}
-        />
-        <button
-          onClick={(e) => {
-            e.preventDefault();
-            saveDoc();
-          }}
-        >
-          Save
-        </button>
-      </form>
-          <p>Started at: {doc.startedAt}</p>
-        <pre>{JSON.stringify(doc, null, 2)}</pre>
-    </div>
-  );
-};
+const { useDocument } = useFireproof("my-app")
+const [doc, setDoc, saveDoc] = useDocument(() => ({_id: "user-123"}));
 ```
 
-## Create new documents with `useDocument`
+The hook returns three items:
+- `doc`: The current document state
+- `setDoc`: Function to update the document state
+- `saveDoc`: Function to persist changes to the database
 
-You can also use `useDocument` to create new documents. Just don't pass in an `_id` as part of your initial doc, and the ledger will assign a new one when you call `saveDoc`. Pass `false` to `saveDoc` to reset to the initial state.
+Initially, the returned document is the initial value passed to `useDocument`. The component will re-render when the document loads or when the document is updated in the database.
 
+While the `_id` field is the only field required to retrieve the document, if you are using TypeScript you will likely need to craft an empty object with the correct `_id` and wait for the document to load. See the Updating example below.
 
+## Creating New Documents
 
+To create a new document, use `useDocument` without specifying an `_id`. The database will automatically assign one when you call `saveDoc`. Here's a real-world example:
+
+```typescript
+function CreateUserProfile() {
+  const { useDocument } = useFireproof("user-app");
+  const [user, setUser, saveUser] = useDocument(() => ({
+    type: 'user',
+    firstName: '',
+    lastName: '',
+    email: '',
+    role: 'member',
+    active: true,
+    updatedAt: new Date().toISOString(),
+    createdAt: new Date().toISOString()
+  }));
+
+  const handleCreate = async () => {
+    const result = await saveUser(user);
+    // result.id contains the new document ID
+  };
+
+  return (
+    <form onSubmit={handleCreate}>
+      <input
+        value={user.firstName}
+        onChange={(e) => setUser({ firstName: e.target.value })}
+        placeholder="First Name"
+      />
+      <button type="submit">Create Profile</button>
+    </form>
+  );
+}
+```
+
+## Updating Existing Documents
+
+When updating documents, `useDocument` will automatically handle state management and persistence. Here's an example of a profile editor:
+
+```typescript
+function UserProfileEditor({ userId }) {
+  const { useDocument } = useFireproof("user-app");
+  const [user, setUser, storeUser] = useDocument(() => ({
+    _id: userId,
+    type: 'empty',
+  }));
+
+  const updateProfile = async (updates) => {
+    const updated = {
+      ...user,
+      ...updates,
+      updatedAt: new Date().toISOString()
+    };
+    setUser(updated);
+  };
+
+  const saveProfile = async () => {
+    const result = await storeUser(user);
+    // result.id contains the updated document ID
+  };
+
+  return user.type !== 'empty' && (
+    <div>
+      <input
+        value={user.firstName}
+        onChange={(e) => updateProfile({ firstName: e.target.value })}
+        placeholder="First Name"
+      />
+      <input
+        value={user.lastName}
+        onChange={(e) => updateProfile({ lastName: e.target.value })}
+        placeholder="Last Name"
+      />
+      <input
+        value={user.email}
+        onChange={(e) => updateProfile({ email: e.target.value })}
+        placeholder="Email"
+      />
+      <select
+        value={user.role}
+        onChange={(e) => updateProfile({ role: e.target.value })}
+      >
+        <option value="admin">Admin</option>
+        <option value="member">Member</option>
+        <option value="guest">Guest</option>
+      </select>
+      <label>
+        <input
+          type="checkbox"
+          checked={user.active}
+          onChange={(e) => updateProfile({ active: e.target.checked })}
+        />
+        Account Active
+      </label>
+      <button onClick={saveProfile}>Save</button>
+    </div>
+  );
+}
+```
